@@ -106,6 +106,10 @@ class LogisticRegression(nn.Module):
         return self.linear(x)
 
 
+import torch
+import numpy as np
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
+
 def train_logistic_regression(model, dataloader, criterion, optimizer, epochs=100):
     """
     Обучение логистической регрессии с вычислением метрик precision, recall, F1-score и ROC-AUC.
@@ -122,6 +126,7 @@ def train_logistic_regression(model, dataloader, criterion, optimizer, epochs=10
         total_acc = 0
         all_preds = []
         all_labels = []
+        all_probs = []  # Массив для вероятностей
 
         for batch_X, batch_y in dataloader:
             optimizer.zero_grad()
@@ -132,7 +137,7 @@ def train_logistic_regression(model, dataloader, criterion, optimizer, epochs=10
 
             total_loss += loss.item()
 
-            # Предсказания и метрики
+            # Получаем предсказания и метрики
             y_pred = torch.argmax(logits, dim=1)
             acc = (y_pred == batch_y).float().mean()
             total_acc += acc.item()
@@ -140,14 +145,20 @@ def train_logistic_regression(model, dataloader, criterion, optimizer, epochs=10
             all_preds.extend(y_pred.cpu().numpy())
             all_labels.extend(batch_y.cpu().numpy())
 
+            # Добавляем вероятности в all_probs
+            probs = torch.softmax(logits, dim=1)  # Применяем softmax для многоклассовых вероятностей
+            all_probs.extend(probs.cpu().detach().numpy())
+
         avg_loss = total_loss / len(dataloader)
         avg_acc = total_acc / len(dataloader)
 
         precision = precision_score(all_labels, all_preds, average='weighted')
         recall = recall_score(all_labels, all_preds, average='weighted')
         f1 = f1_score(all_labels, all_preds, average='weighted')
+
         try:
-            roc_auc = roc_auc_score(all_labels, np.array(all_preds), multi_class='ovr')
+            # Используем вероятности для ROC-AUC
+            roc_auc = roc_auc_score(all_labels, np.array(all_probs), multi_class='ovr')
         except ValueError:
             roc_auc = 0.0  # Если ROC-AUC не может быть рассчитан для одного класса
 
@@ -156,6 +167,7 @@ def train_logistic_regression(model, dataloader, criterion, optimizer, epochs=10
             print(f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, ROC-AUC: {roc_auc:.4f}")
 
     return model
+
 
 
 def plot_confusion_matrix(y_true, y_pred, classes):
