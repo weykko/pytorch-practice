@@ -179,7 +179,6 @@ def plot_confusion_matrix(y_true, y_pred, classes):
     :param classes: Названия классов
     """
     cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(8, 6))
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title("Confusion Matrix")
     plt.colorbar()
@@ -188,6 +187,7 @@ def plot_confusion_matrix(y_true, y_pred, classes):
     plt.yticks(tick_marks, classes)
     plt.xlabel('Predicted label')
     plt.ylabel('True label')
+    plt.tight_layout()
     plt.savefig('plots/confusion_matrix.png')
     plt.show()
 
