@@ -72,7 +72,10 @@ class CSVDataset(Dataset):
 
 
 # Визуализация матрицы ошибок
-def plot_confusion(y_true, y_pred, labels):
+def plot_confusion_matrix(y_true, y_pred, labels):
+    """
+    Визуализация матрицы ошибок.
+    """
     cm = confusion_matrix(y_true, y_pred)
     fig, ax = plt.subplots()
     im = ax.imshow(cm, cmap='Blues')
@@ -87,8 +90,8 @@ def plot_confusion(y_true, y_pred, labels):
         for j in range(len(labels)):
             ax.text(j, i, cm[i, j], ha='center', va='center', color='black')
     plt.tight_layout()
-    plt.show()
     plt.savefig("plots/confusion_matrix2.png")
+    plt.show()
 
 
 # Основной блок
@@ -157,4 +160,4 @@ if __name__ == '__main__':
             print("ROC-AUC не рассчитан.")
 
         # Визуализация матрицы ошибок
-        plot_confusion(y_val.numpy(), y_pred_cls.numpy(), labels=["Class 0", "Class 1"])
+        plot_confusion_matrix(y_val.numpy(), y_pred_cls.numpy(), labels=["Class 0", "Class 1"])

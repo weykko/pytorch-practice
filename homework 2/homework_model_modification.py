@@ -188,8 +188,8 @@ def plot_confusion_matrix(y_true, y_pred, classes):
     plt.yticks(tick_marks, classes)
     plt.xlabel('Predicted label')
     plt.ylabel('True label')
-    plt.show()
     plt.savefig('plots/confusion_matrix.png')
+    plt.show()
 
 
 if __name__ == '__main__':

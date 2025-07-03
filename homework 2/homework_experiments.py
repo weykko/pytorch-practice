@@ -144,8 +144,8 @@ def visualize_results(results):
     plt.ylabel('MSE')
     plt.title('Effect of Learning Rate on MSE for Different Optimizers')
     plt.legend()
-    plt.show()
     plt.savefig("plots/hyperparameter_experiments.png")
+    plt.show()
 
 
 def feature_engineering():
@@ -200,13 +200,13 @@ def feature_engineering():
 
 
 if __name__ == '__main__':
-    # # Эксперименты с гиперпараметрами
-    print("Исследование гиперпараметров")
-    results = run_experiment(
-        learning_rates=[0.001, 0.01, 0.1],
-        batch_sizes=[16, 32],
-        optimizers=['SGD', 'Adam', 'RMSprop']
-    )
+    # Эксперименты с гиперпараметрами
+    # print("Исследование гиперпараметров")
+    # results = run_experiment(
+    #     learning_rates=[0.001, 0.01, 0.1],
+    #     batch_sizes=[16, 32],
+    #     optimizers=['SGD', 'Adam', 'RMSprop']
+    # )
 
     # Feature Engineering
     print("\nFeature Engineering")
