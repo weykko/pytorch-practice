@@ -1,34 +1,15 @@
 import torch
 import torch.nn as nn
-from utils.datasets import get_mnist_loaders, get_cifar_loaders
-from utils.models import SimpleCNN, CNNWithResidual, FullyConnectedNet, RegularizedCNNWithResidual
-from utils.trainer import train_model
-from utils.utils import plot_training_history, count_parameters, compare_models
-import time
-import numpy as np
+import torch.optim as optim
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix
-import seaborn as sns
-from torch.nn.utils import clip_grad_norm_
+import numpy as np
+import time
+from utils.datasets import get_cifar_loaders
+from utils.models import CNNKernelSize, CNNDepth
+from utils.trainer import train_model
+from utils.utils import plot_training_history, count_parameters
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-def get_confusion_matrix(model, data_loader, device):
-    """
-    Функция для вычисления и возвращения матрицы ошибок.
-    """
-    model.eval()  # Переводим модель в режим оценки
-    all_preds = []
-    all_targets = []
-    with torch.no_grad():  # Отключаем вычисление градиентов
-        for data, target in data_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            preds = output.argmax(dim=1)  # Получаем предсказанные классы
-            all_preds.extend(preds.cpu().numpy())
-            all_targets.extend(target.cpu().numpy())
-    return confusion_matrix(all_targets, all_preds)  # Возвращаем матрицу ошибок
 
 
 def compute_gradient_norms(model):
@@ -38,28 +19,63 @@ def compute_gradient_norms(model):
     total_norm = 0.0
     for p in model.parameters():
         if p.grad is not None:
-            param_norm = p.grad.data.norm(2)  # L2-норма градиента параметра
+            param_norm = p.grad.data.norm(2)
             total_norm += param_norm.item() ** 2
-    return np.sqrt(total_norm)  # Возвращаем общую норму градиентов
+    return np.sqrt(total_norm)
 
 
-def plot_confusion_matrix(cm, title, classes, path):
+def compute_receptive_field(kernel_sizes, strides):
     """
-    Визуализирует матрицу ошибок в виде тепловой карты.
+    Функция для вычисления рецептивного поля.
     """
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
-    plt.title(title)
-    plt.xlabel('Предсказанные классы')
-    plt.ylabel('Истинные классы')
+    rf = 1
+    for k, s in zip(kernel_sizes, strides):
+        rf += (k - 1) * s
+    return rf
+
+
+def visualize_activations(activations, title, path, num_filters=16):
+    """
+    Визуализирует активации (карты признаков).
+    """
+    activations = activations.detach().cpu().numpy()[0]
+    fig, axes = plt.subplots(4, 4, figsize=(12, 12))
+    for i, ax in enumerate(axes.flat):
+        if i < num_filters:
+            ax.imshow(activations[i], cmap='viridis')
+            ax.axis('off')
+    plt.suptitle(title)
     plt.tight_layout()
     plt.savefig(path)
     plt.show()
 
 
-def plot_gradient_norms(gradient_norms, name, path):
+def plot_comparison(histories, name1, name2, path,  metric='test_accs'):
     """
-    Визуализирует график нормы градиентов во время обучения.
+    Построение графиков для сравнения точности или потерь для двух моделей.
+    """
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(histories[name1][metric], label=name1, marker='o')
+    plt.plot(histories[name2][metric], label=name2, marker='s')
+    plt.title(f'Сравнение {metric} на тестовой выборке')
+    plt.legend()
+    plt.grid(True)
+
+    plt.subplot(1, 2, 2)
+    plt.plot(histories[name1]['test_losses'], label=name1, marker='o')
+    plt.plot(histories[name2]['test_losses'], label=name2, marker='s')
+    plt.title('Сравнение потерь на тестовой выборке')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.show()
+
+
+def plot_gradients_norms(gradient_norms, name, path):
+    """
+    Построение графиков норм градиентов во время обучения.
     """
     plt.figure(figsize=(8, 4))
     plt.plot(gradient_norms, label=f'Норма градиентов {name}')
@@ -73,19 +89,14 @@ def plot_gradient_norms(gradient_norms, name, path):
     plt.show()
 
 
-def run_experiment(model_class, dataset, epochs=5, lr=0.001, batch_size=64):
+def train_and_evaluate(model, train_loader, test_loader, device):
     """
-    Обучение модели и вывод информации о производительности.
+    Обучение модели и вычисление времени инференса.
     """
-    train_loader, test_loader = dataset(batch_size)
-    model = model_class.to(device)
-
-    # Обучение модели
     start_time = time.time()
-    history = train_model(model, train_loader, test_loader, epochs, lr, device)
+    history = train_model(model, train_loader, test_loader, epochs=5, lr=0.001, device=str(device))
     training_time = time.time() - start_time
 
-    # Измерение времени инференса
     model.eval()
     inference_start = time.time()
     with torch.no_grad():
@@ -94,108 +105,136 @@ def run_experiment(model_class, dataset, epochs=5, lr=0.001, batch_size=64):
             model(data)
     inference_time = (time.time() - inference_start) / len(test_loader.dataset)
 
-    # Вывод параметров и времени обучения
-    print(f"Параметры: {count_parameters(model)}")
-    print(f"Время обучения: {training_time:.2f} с")
-    print(f"Время инференса: {inference_time:.6f} с")
-
-    return model, history, training_time, inference_time
+    return history, training_time, inference_time
 
 
-def experiment_mnist():
+def analyze_kernel_sizes(train_loader, test_loader, device):
     """
-    Эксперимент с использованием MNIST для сравнения различных моделей.
+    Анализ влияния размера ядра свертки на производительность.
     """
-    train_loader_mnist, test_loader_mnist = get_mnist_loaders(batch_size=64)
+    kernel_configs = [
+        ([3, 3, 3], "Ядра 3x3"),
+        ([5, 5, 5], "Ядра 5x5"),
+        ([7, 7, 7], "Ядра 7x7"),
+        ([(1, 3), 3, 3], "Комбинация 1x1 + 3x3")
+    ]
 
-    models_mnist = {
-        'FullyConnected': FullyConnectedNet(input_size=28 * 28, num_classes=10),
-        'SimpleCNN': SimpleCNN(input_channels=1, num_classes=10),
-        'ResidualCNN': CNNWithResidual(input_channels=1, num_classes=10)
-    }
+    histories_kernel = {}
+    training_times_kernel = {}
+    inference_times_kernel = {}
+    receptive_fields = []
 
-    histories_mnist = {}
-    training_times_mnist = {}
-    inference_times_mnist = {}
+    for config, name in kernel_configs:
+        print(f"\nОбучение CNN с {name}...")
+        model = CNNKernelSize(config, input_channels=3, num_classes=10).to(device)
 
-    for name, model in models_mnist.items():
-        print(f"\nОбучение {name}")
-        model, history, training_time, inference_time = run_experiment(
-            model_class=models_mnist[name],
-            dataset=get_mnist_loaders,
-        )
-        histories_mnist[name] = history
-        training_times_mnist[name] = training_time
-        inference_times_mnist[name] = inference_time
+        # Обучаем модель
+        history, training_time, inference_time = train_and_evaluate(model, train_loader, test_loader, device)
 
-        plot_training_history(history, f'plots/{name}_history_mnist.png')  # Построение графика истории обучения
+        histories_kernel[name] = history
+        training_times_kernel[name] = training_time
+        inference_times_kernel[name] = inference_time
 
-        cm = get_confusion_matrix(model, test_loader_mnist, device)
-        plot_confusion_matrix(cm, f"Матрица ошибок {name} (MNIST)", range(10), f'plots/{name}_matrix_mnist.png')
+        print(f"Параметры: {count_parameters(model)}")
+        print(f"Время обучения: {training_time:.2f} с")
+        print(f"Время инференса: {inference_time:.6f} с")
 
-    # Сравнение моделей
-    compare_models(histories_mnist['FullyConnected'], histories_mnist['SimpleCNN'], f'plots/compare_fcn_cnn_mnist.png')
-    compare_models(histories_mnist['SimpleCNN'], histories_mnist['ResidualCNN'], f'plots/compare_cnn_residual_cnn_mnist.png')
+        kernel_sizes_for_rf = [k if isinstance(k, int) else 3 for k in config]
+        rf = compute_receptive_field(kernel_sizes_for_rf, [1, 1, 1])
+        receptive_fields.append((name, rf))
+        print(f"Рецептивное поле: {rf}")
+
+        # Визуализация активаций
+        with torch.no_grad():
+            for data, _ in test_loader:
+                data = data[:1].to(device)
+                activations = model.get_first_layer_activations(data)
+                visualize_activations(activations, f"Активации первого слоя ({name})", f'plots/2_{name}_activations.png')
+                break
+
+        plot_training_history(history, f'plots/2_{name}_history.png')
+
+    # Сравнение различных ядер
+    plot_comparison(histories_kernel, 'Ядра 3x3', 'Ядра 5x5',f'plots/2_comp_3x3_5x5.png')
+    plot_comparison(histories_kernel, 'Ядра 5x5', 'Ядра 7x7', f'plots/2_comp_5x5_7x7.png')
+    plot_comparison(histories_kernel, 'Ядра 3x3', 'Комбинация 1x1 + 3x3', f'plots/2_comp_3x3_1x1+3x3.png')
 
 
-def experiment_cifar10():
+def analyze_depth(train_loader, test_loader, device):
     """
-    Эксперимент с использованием CIFAR-10 для сравнения различных моделей.
+    Анализ влияния глубины сети на производительность.
     """
-    train_loader_cifar, test_loader_cifar = get_cifar_loaders(batch_size=64)
+    depth_configs = [
+        (2, False, "Мелкая CNN (2 сверточных слоя)"),
+        (4, False, "Средняя CNN (4 сверточных слоя)"),
+        (6, False, "Глубокая CNN (6 сверточных слоев)"),
+        (6, True, "Остаточная CNN (6 сверточных слоев)")
+    ]
 
-    models_cifar = {
-        'FullyConnected': FullyConnectedNet(input_size=32 * 32 * 3, num_classes=10),
-        'ResidualCNN': CNNWithResidual(input_channels=3, num_classes=10),
-        'RegularizedResidualCNN': RegularizedCNNWithResidual(input_channels=3, num_classes=10)
-    }
+    histories_depth = {}
+    training_times_depth = {}
+    inference_times_depth = {}
+    gradient_norms_depth = {}
 
-    histories_cifar = {}
-    training_times_cifar = {}
-    inference_times_cifar = {}
-    gradient_norms_cifar = {}
-
-    for name, model in models_cifar.items():
+    for num_layers, use_residual, name in depth_configs:
         print(f"\nОбучение {name}...")
-        model, history, training_time, inference_time = run_experiment(
-            model_class=models_cifar[name],
-            dataset=get_cifar_loaders,
-        )
-        histories_cifar[name] = history
-        training_times_cifar[name] = training_time
-        inference_times_cifar[name] = inference_time
+        model = CNNDepth(num_layers, use_residual, input_channels=3, num_classes=10).to(device)
+
+        gradient_norms = []
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        model.train()
 
         # Собираем нормы градиентов
-        gradient_norms_cifar[name] = []
         for epoch in range(5):
             epoch_grad_norms = []
-            for data, target in train_loader_cifar:
+            for data, target in train_loader:
                 data, target = data.to(device), target.to(device)
+                optimizer.zero_grad()
                 output = model(data)
-                loss = nn.CrossEntropyLoss()(output, target)
+                loss = criterion(output, target)
                 loss.backward()
                 epoch_grad_norms.append(compute_gradient_norms(model))
-                clip_grad_norm_(model.parameters(), max_norm=1.0)
-            gradient_norms_cifar[name].append(np.mean(epoch_grad_norms))
+                optimizer.step()
+            gradient_norms.append(np.mean(epoch_grad_norms))
 
-        plot_gradient_norms(gradient_norms_cifar[name], name, f'plots/{name}_gradient_cifar.png')
-        plot_training_history(history, f'plots/{name}_history_cifar.png')
+        # Обучаем модель и получаем историю
+        history, training_time, inference_time = train_and_evaluate(model, train_loader, test_loader, device)
 
-        cm = get_confusion_matrix(model, test_loader_cifar, device)
-        cifar_classes = ['самолет', 'автомобиль', 'птица', 'кошка', 'олень', 'собака', 'лягушка', 'лошадь', 'корабль',
-                         'грузовик']
-        plot_confusion_matrix(cm, f"Матрица ошибок {name} (CIFAR-10)", cifar_classes, f'plots/{name}_matrix_cifar.png')
+        histories_depth[name] = history
+        training_times_depth[name] = training_time
+        inference_times_depth[name] = inference_time
+        gradient_norms_depth[name] = gradient_norms
 
-    # Сравнение моделей
-    compare_models(histories_cifar['FullyConnected'], histories_cifar['ResidualCNN'], f'plots/compare_fcn_rcnn_cifar.png')
-    compare_models(histories_cifar['ResidualCNN'], histories_cifar['RegularizedResidualCNN'], f'plots/compare_rcnn_regularcnn_cifar.png')
+        print(f"Параметры: {count_parameters(model)}")
+        print(f"Время обучения: {training_time:.2f} с")
+        print(f"Время инференса: {inference_time:.6f} с")
+
+        # Визуализация карт признаков
+        with torch.no_grad():
+            for data, _ in test_loader:
+                data = data[:1].to(device)
+                feature_maps = model.get_feature_maps(data, len(model.layers) - 4)
+                visualize_activations(feature_maps, f"Карты признаков последнего слоя ({name})", f'plots/2_{name}_activations.png')
+                break
+
+        plot_training_history(history, f'plots/2_{name}_history.png')
+        plot_gradients_norms(gradient_norms, name, f'plots/2_{name}_gradients.png')
+
+    # Сравнение различных глубин
+    plot_comparison(histories_depth, 'Мелкая CNN (2 сверточных слоя)', 'Средняя CNN (4 сверточных слоя)', f'plots/2_comp_2l_4l.png')
+    plot_comparison(histories_depth, 'Средняя CNN (4 сверточных слоя)', 'Глубокая CNN (6 сверточных слоев)', f'plots/2_comp_4l_6l.png')
+    plot_comparison(histories_depth, 'Глубокая CNN (6 сверточных слоев)', 'Остаточная CNN (6 сверточных слоев)', f'plots/2_comp_6l.png')
 
 
 def main():
-    print("Сравнение на MNIST")
-    experiment_mnist()
-    print("\nСравнение на CIFAR-10")
-    experiment_cifar10()
+    train_loader, test_loader = get_cifar_loaders(batch_size=64)
+
+    print("Влияние размера ядра свертки")
+    analyze_kernel_sizes(train_loader, test_loader, device)
+
+    print("\nВлияние глубины CNN")
+    analyze_depth(train_loader, test_loader, device)
 
 
 if __name__ == "__main__":

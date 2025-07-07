@@ -137,3 +137,98 @@ class RegularizedCNNWithResidual(nn.Module):
         x = self.dropout(x)
         x = self.fc(x)
         return x
+
+
+class CNNKernelSize(nn.Module):
+    """
+    Модель для анализа влияния размера ядра свертки на производительность.
+    """
+
+    def __init__(self, kernel_config, input_channels=3, num_classes=10):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        in_channels = input_channels
+        out_channels = [32, 64, 128]  # Фиксированное увеличение количества каналов
+
+        for i, kernel_size in enumerate(kernel_config):
+            if isinstance(kernel_size, tuple):  # Для комбинации 1x1 + 3x3
+                self.layers.append(nn.Conv2d(in_channels, out_channels[i] // 2, 1))
+                self.layers.append(nn.BatchNorm2d(out_channels[i] // 2))
+                self.layers.append(nn.ReLU())
+                self.layers.append(nn.Conv2d(out_channels[i] // 2, out_channels[i], 3, padding=1))
+            else:
+                self.layers.append(nn.Conv2d(in_channels, out_channels[i], kernel_size, padding=kernel_size // 2))
+            self.layers.append(nn.BatchNorm2d(out_channels[i]))
+            self.layers.append(nn.ReLU())
+            self.layers.append(nn.MaxPool2d(2, 2))
+            in_channels = out_channels[i]
+
+        self.pool = nn.AdaptiveAvgPool2d((4, 4))
+        self.fc = nn.Linear(128 * 4 * 4, num_classes)
+        self.dropout = nn.Dropout(0.25)
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
+        x = self.dropout(x)
+        x = self.fc(x)
+        return x
+
+    def get_first_layer_activations(self, x):
+        """
+        Получаем активации после первого сверточного блока.
+        """
+        x = self.layers[0](x)
+        x = self.layers[1](x)
+        x = self.layers[2](x)
+        return x
+
+
+class CNNDepth(nn.Module):
+    """
+    Модель для анализа влияния глубины сети на производительность.
+    """
+
+    def __init__(self, num_conv_layers, use_residual=False, input_channels=3, num_classes=10):
+        super().__init__()
+        self.use_residual = use_residual
+        self.layers = nn.ModuleList()
+        in_channels = input_channels
+        out_channels = [32, 64, 128, 256, 256, 256][:num_conv_layers]
+
+        for i in range(num_conv_layers):
+            if use_residual and i > 0 and i % 2 == 0:
+                self.layers.append(ResidualBlock(in_channels, out_channels[i]))
+                in_channels = out_channels[i]
+            else:
+                self.layers.append(nn.Conv2d(in_channels, out_channels[i], 3, padding=1))
+                self.layers.append(nn.BatchNorm2d(out_channels[i]))
+                self.layers.append(nn.ReLU())
+                if i % 2 == 1:
+                    self.layers.append(nn.MaxPool2d(2, 2))
+                in_channels = out_channels[i]
+
+        self.pool = nn.AdaptiveAvgPool2d((4, 4))
+        self.fc = nn.Linear(out_channels[-1] * 4 * 4, num_classes)
+        self.dropout = nn.Dropout(0.25)
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
+        x = self.dropout(x)
+        x = self.fc(x)
+        return x
+
+    def get_feature_maps(self, x, layer_idx):
+        """
+        Получаем карты признаков для заданного слоя.
+        """
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+            if i == layer_idx:
+                return x
+        return x
