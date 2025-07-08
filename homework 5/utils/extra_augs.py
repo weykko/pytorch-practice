@@ -2,7 +2,8 @@ import torch
 import random
 import numpy as np
 import cv2
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image, ImageEnhance, ImageOps, ImageFilter
+import torchvision.transforms.functional as F
 
 
 class AddGaussianNoise:
@@ -147,3 +148,63 @@ class MixUp:
             return img1
         lam = np.random.beta(self.alpha, self.alpha)
         return lam * img1 + (1 - lam) * img2
+
+
+class CustomGaussianBlur:
+    """Применяет случайное гауссово размытие к изображению."""
+
+    def __init__(self, p=0.5, max_radius=3):
+        self.p = p
+        self.max_radius = max_radius
+
+    def __call__(self, img):
+        if random.random() > self.p:
+            return img
+        radius = random.uniform(0, self.max_radius)
+        return img.filter(ImageFilter.GaussianBlur(radius=radius))
+
+
+class CustomPerspective:
+    """Применяет случайное перспективное искажение."""
+
+    def __init__(self, p=0.5, distortion_scale=0.3):
+        self.p = p
+        self.distortion_scale = distortion_scale
+
+    def __call__(self, img):
+        if random.random() > self.p:
+            return img
+        img_tensor = F.to_tensor(img)
+        img_pil = F.perspective(
+            img,
+            startpoints=[[0, 0], [img.width, 0], [img.width, img.height], [0, img.height]],
+            endpoints=[
+                [random.uniform(0, img.width * self.distortion_scale),
+                 random.uniform(0, img.height * self.distortion_scale)],
+                [img.width - random.uniform(0, img.width * self.distortion_scale),
+                 random.uniform(0, img.height * self.distortion_scale)],
+                [img.width - random.uniform(0, img.width * self.distortion_scale),
+                 img.height - random.uniform(0, img.height * self.distortion_scale)],
+                [random.uniform(0, img.width * self.distortion_scale),
+                 img.height - random.uniform(0, img.height * self.distortion_scale)]
+            ]
+        )
+        return img_pil
+
+
+class CustomBrightnessContrast:
+    """Случайно изменяет яркость и контрастность изображения."""
+
+    def __init__(self, p=0.5, brightness_factor=(0.7, 1.3), contrast_factor=(0.7, 1.3)):
+        self.p = p
+        self.brightness_factor = brightness_factor
+        self.contrast_factor = contrast_factor
+
+    def __call__(self, img):
+        if random.random() > self.p:
+            return img
+        brightness = random.uniform(*self.brightness_factor)
+        contrast = random.uniform(*self.contrast_factor)
+        img = ImageEnhance.Brightness(img).enhance(brightness)
+        img = ImageEnhance.Contrast(img).enhance(contrast)
+        return img

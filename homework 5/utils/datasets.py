@@ -59,4 +59,27 @@ class CustomImageDataset(Dataset):
 
     def get_class_names(self):
         """Возвращает список имен классов"""
-        return self.classes 
+        return self.classes
+
+
+def load_dataset(root, target_size, num_images):
+    """
+    Загружает датасет и выбирает по одному изображению из разных классов.
+    """
+    dataset = CustomImageDataset(root, transform=None, target_size=target_size)
+    class_names = dataset.get_class_names()
+
+    selected_images = []
+    selected_labels = []
+    class_indices = {}
+
+    for idx in range(len(dataset)):
+        img, label = dataset[idx]
+        if label not in class_indices and len(class_indices) < num_images:
+            class_indices[label] = idx
+            selected_images.append(img)
+            selected_labels.append(label)
+        if len(class_indices) == num_images:
+            break
+
+    return selected_images, selected_labels, class_names
