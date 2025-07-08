@@ -118,8 +118,8 @@ def main():
     train_dir = './data/train'
     val_dir = './data/test'
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),  # Приведение к размеру, ожидаемому ResNet18
-        transforms.ToTensor()           # Преобразование в тензор
+        transforms.Resize((224, 224)),
+        transforms.ToTensor()
     ])
     num_epochs = 5
 

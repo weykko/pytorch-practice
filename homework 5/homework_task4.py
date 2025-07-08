@@ -2,7 +2,7 @@ import torch
 from torchvision import transforms
 from utils.extra_augs import CustomPerspective, CustomBrightnessContrast, CustomGaussianBlur
 from PIL import Image
-from utils.datasets import CustomImageDataset, load_dataset
+from utils.datasets import load_dataset
 
 
 class AugmentationPipeline:
