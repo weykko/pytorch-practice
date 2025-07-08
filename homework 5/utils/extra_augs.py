@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 from PIL import Image, ImageEnhance, ImageOps, ImageFilter
 import torchvision.transforms.functional as F
+from torchvision import transforms
 
 
 class AddGaussianNoise:
@@ -208,3 +209,52 @@ class CustomBrightnessContrast:
         img = ImageEnhance.Brightness(img).enhance(brightness)
         img = ImageEnhance.Contrast(img).enhance(contrast)
         return img
+
+
+class AugmentationPipeline:
+    """
+    Класс для управления пайплайном аугментаций изображений.
+    """
+
+    def __init__(self):
+        self.augmentations = {}  # Словарь: {name: (aug, input_type)}
+        self.to_tensor = transforms.ToTensor()
+        self.to_pil = transforms.ToPILImage()
+
+    def add_augmentation(self, name, aug, input_type='PIL'):
+        """
+        Добавляет аугментацию в пайплайн.
+        """
+        if not isinstance(name, str):
+            raise ValueError("Имя аугментации должно быть строкой")
+        if input_type not in ['PIL', 'tensor']:
+            raise ValueError("input_type должен быть 'PIL' или 'tensor'")
+        self.augmentations[name] = (aug, input_type)
+
+    def remove_augmentation(self, name):
+        """
+        Удаляет аугментацию из пайплайна по имени.
+        """
+        if name in self.augmentations:
+            del self.augmentations[name]
+        else:
+            raise KeyError(f"Аугментация с именем '{name}' не найдена")
+
+    def apply(self, image):
+        """
+        Применяет все аугментации к изображению.
+        """
+        result = image
+        for name, (aug, input_type) in self.augmentations.items():
+            if input_type == 'tensor' and isinstance(result, Image.Image):
+                result = self.to_tensor(result)
+            elif input_type == 'PIL' and isinstance(result, torch.Tensor):
+                result = self.to_pil(result)
+            result = aug(result)
+        return result
+
+    def get_augmentations(self):
+        """
+        Возвращает список всех аугментаций в пайплайне.
+        """
+        return list(self.augmentations.keys())
