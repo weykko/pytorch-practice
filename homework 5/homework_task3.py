@@ -51,7 +51,7 @@ def visualize_size_distribution(widths, heights, path):
     Визуализирует распределение размеров изображений на scatter plot.
     """
     plt.figure(figsize=(10, 6))
-    plt.scatter(widths, heights, alpha=0.5, c='blue', s=50)
+    plt.scatter(widths, heights, alpha=0.5, c='lightcoral', s=50)
     plt.title("Распределение размеров изображений")
     plt.xlabel("Ширина")
     plt.ylabel("Высота")
@@ -66,7 +66,10 @@ def visualize_class_histogram(class_counts, path):
     Визуализирует гистограмму количества изображений по классам.
     """
     plt.figure(figsize=(10, 6))
-    bars = plt.bar(class_counts.keys(), class_counts.values(), color='limegreen')
+    bars = plt.bar(class_counts.keys(), class_counts.values(), color='palegreen')
+    for bar in bars:
+        bar.set_edgecolor('black')
+        bar.set_linewidth(1)
     plt.title("Гистограмма количества изображений по классам")
     plt.xlabel("Классы")
     plt.ylabel("Количество изображений")
